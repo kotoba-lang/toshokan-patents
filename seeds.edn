@@ -1,23 +1,2 @@
-;; seeds.edn — patent-id seeds for toshokan-patents.
-;; hand-editable; daemon.cljs also appends citation-grown seeds (:grown-from).
-;; Each seed's :query is a worldwide patent id as accepted by Google Patents
-;; (US........B?, EP.......A?, JP........A?, WO........A?, CN........A?, ...).
-;; The daemon walks the citation graph from these roots (DC.relation references),
-;; the patent-domain analogue of toshokan growing seeds from creators.
-
-{:policy
- {:max-records-per-tick 8        ; one patent page per tick — polite to the source
-  :max-new-seeds-per-tick 10     ; cap citation-graph fan-out per tick
-  :max-seeds 5000
-  :sources ["google-patents"]
-  :inter-source-sleep-ms 2000}
-
- :seeds
- [;; CRISPR-Cas9 — high-value, high-citation roots that will walk the
-  ;; gene-editing citation graph across US/EP/JP/WO offices.
-  {:id "crispr-broad"    :query "US8697359B1"   :note "CRISPR-Cas9 (Broad Institute)"}
-  {:id "crispr-ucb"      :query "EP2784683B1"   :note "CRISPR-Cas9 (UC Berkeley / Vienna)"}
-  ;; Verified live in the probe (Kansai Paint) — keep as a known-good anchor.
-  {:id "paint-kansai"   :query "US10196540B2"  :note "Aqueous coating composition (Kansai Paint) — probe anchor"}
-  ;; mRNA / lipid nanoparticle — another high-citation worldwide cluster.
-  {:id "mrna-lnp"       :query "US10584378B2"  :note "mRNA-LNP (Karikó/Weissman lineage)"}]}
+;; seeds.edn — managed by daemon self-grow (citation graph) + human edits.
+{:policy {:max-records-per-tick 8, :max-new-seeds-per-tick 10, :max-seeds 5000, :sources ["google-patents"], :inter-source-sleep-ms 2000}, :seeds [{:id "crispr-broad", :query "US8697359B1", :note "CRISPR-Cas9 (Broad Institute)"} {:id "crispr-ucb", :query "EP2784683B1", :note "CRISPR-Cas9 (UC Berkeley / Vienna)"} {:id "paint-kansai", :query "US10196540B2", :note "Aqueous coating composition (Kansai Paint) — probe anchor"} {:id "mrna-lnp", :query "US10584378B2", :note "mRNA-LNP (Karikó/Weissman lineage)"} {:id "cited-jp2004224907a", :query "JP2004224907A", :grown-from "google-patents", :grown-at "2026-07-25T07:23:05.651Z"} {:id "cited-jp2005120304a", :query "JP2005120304A", :grown-from "google-patents", :grown-at "2026-07-25T07:23:05.651Z"} {:id "cited-jp2006056973a", :query "JP2006056973A", :grown-from "google-patents", :grown-at "2026-07-25T07:23:05.651Z"} {:id "cited-jp2010150519a", :query "JP2010150519A", :grown-from "google-patents", :grown-at "2026-07-25T07:23:05.651Z"} {:id "cited-jp2011016957a", :query "JP2011016957A", :grown-from "google-patents", :grown-at "2026-07-25T07:23:05.651Z"} {:id "cited-jp2011149011a", :query "JP2011149011A", :grown-from "google-patents", :grown-at "2026-07-25T07:23:05.651Z"} {:id "cited-jp2012062445a", :query "JP2012062445A", :grown-from "google-patents", :grown-at "2026-07-25T07:23:05.651Z"} {:id "cited-jp2012131092a", :query "JP2012131092A", :grown-from "google-patents", :grown-at "2026-07-25T07:23:05.651Z"} {:id "cited-wo2013151050a1", :query "WO2013151050A1", :grown-from "google-patents", :grown-at "2026-07-25T07:23:05.651Z"} {:id "cited-jp2013213151a", :query "JP2013213151A", :grown-from "google-patents", :grown-at "2026-07-25T07:23:05.651Z"} {:id "cited-us4883750", :query "US4883750", :grown-from "google-patents", :grown-at "2026-07-25T07:23:19.121Z"} {:id "cited-us4683202", :query "US4683202", :grown-from "google-patents", :grown-at "2026-07-25T07:23:19.121Z"} {:id "cited-us5856092", :query "US5856092", :grown-from "google-patents", :grown-at "2026-07-25T07:23:19.121Z"} {:id "cited-us5143854", :query "US5143854", :grown-from "google-patents", :grown-at "2026-07-25T07:23:19.121Z"} {:id "cited-us6225625", :query "US6225625", :grown-from "google-patents", :grown-at "2026-07-25T07:23:19.121Z"} {:id "cited-us5547839", :query "US5547839", :grown-from "google-patents", :grown-at "2026-07-25T07:23:19.121Z"} {:id "cited-us5902723", :query "US5902723", :grown-from "google-patents", :grown-at "2026-07-25T07:23:19.121Z"} {:id "cited-us5800992", :query "US5800992", :grown-from "google-patents", :grown-at "2026-07-25T07:23:19.121Z"} {:id "cited-us5302509", :query "US5302509", :grown-from "google-patents", :grown-at "2026-07-25T07:23:19.121Z"} {:id "cited-us5644048", :query "US5644048", :grown-from "google-patents", :grown-at "2026-07-25T07:23:19.121Z"}]}
