@@ -1,0 +1,3 @@
+node_modules/
+scripts/.kotobase-ingest-toshokan-patents-identity.hex
+*.log

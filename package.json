@@ -1,0 +1,8 @@
+{
+  "name": "toshokan-patents",
+  "private": true,
+  "description": "Self-growing worldwide patent bibliographic harvest + resident daemon (toshokan pattern, ADR-2607251552)",
+  "dependencies": {
+    "datascript": "1.6.5"
+  }
+}

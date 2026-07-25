@@ -1,0 +1,2 @@
+;; state.edn — daemon managed; do not hand-edit.
+{:cursor 2, :pages {"google-patents|crispr-broad" 1, "google-patents|crispr-ucb" 1}, :exhausted #{"google-patents|crispr-broad|p1" "google-patents|crispr-ucb|p1"}, :ticks 2, :last-tick "2026-07-25T07:03:00.022Z"}
