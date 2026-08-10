@@ -89,3 +89,54 @@
   (testing "merge-quads appends without reordering"
     (is (= [["a" :x 1 1 :add] ["b" :y 2 2 :add]]
            (quad/merge-quads [["a" :x 1 1 :add]] [["b" :y 2 2 :add]])))))
+
+(defn- tmp-dir []
+  #?(:clj (let [d (java.nio.file.Files/createTempDirectory
+                   "quad-shard" (into-array java.nio.file.attribute.FileAttribute []))]
+            (str d))
+     :cljs (fs/mkdtempSync "/tmp/quad-shard-")))
+
+(defn- q [n] [(str "gp:US" n) :patent/title (str "title " n) n :add])
+
+(deftest journal-is-line-oriented
+  (testing "one quad per line, still ONE readable EDN vector"
+    (let [quads [(q 1) (q 2) (q 3)]
+          text (quad/render-journal quads)]
+      (is (= quads (#?(:clj clojure.edn/read-string :cljs cljs.reader/read-string) text)))
+      (is (= 5 (count (str/split-lines text)))
+          "open bracket, three quads, close bracket — a 691 KB single line was the old shape")
+      (is (str/starts-with? text "[\n"))))
+  (testing "an empty journal is still a readable empty vector"
+    (is (= [] (#?(:clj clojure.edn/read-string :cljs cljs.reader/read-string)
+               (quad/render-journal []))))))
+
+(deftest sharding-rolls-over-and-conserves
+  (let [dir (tmp-dir)
+        ;; tiny budget so a handful of quads forces several shards
+        opts {:shard-max-bytes 200}]
+    (testing "appends roll into new shards once the active one is full"
+      (doseq [i (range 1 21)]
+        (quad/append-sharded! dir "google-patents" [(q i)] opts))
+      (is (> (count (quad/shard-paths dir "google-patents")) 1)
+          "budget must actually force a roll, or this proves nothing"))
+    (testing "every quad survives, in order"
+      (is (= (mapv q (range 1 21)) (quad/read-sharded dir "google-patents"))))
+    (testing "sealed shards stop changing — that is the whole point"
+      (let [paths (quad/shard-paths dir "google-patents")
+            first-shard (first paths)
+            before (quad/read-journal first-shard)]
+        (quad/append-sharded! dir "google-patents" [(q 99)] opts)
+        (is (= before (quad/read-journal first-shard))
+            "an append must not rewrite an older shard")))
+    (testing "shard names sort in index order past 9 and 99"
+      (is (= ["s.0000.journal.edn" "s.0009.journal.edn" "s.0010.journal.edn" "s.0100.journal.edn"]
+             (sort (map #(quad/shard-name "s" %) [0 9 10 100])))))))
+
+(deftest legacy-single-journal-is-not-dropped
+  (let [dir (tmp-dir)
+        legacy (str dir "/google-patents.journal.edn")]
+    (quad/write-journal! legacy [(q 1) (q 2)])
+    (quad/append-sharded! dir "google-patents" [(q 3)] {})
+    (testing "the pre-shard file holds the OLDEST facts; losing it would look
+              exactly like a corpus that had always been smaller"
+      (is (= [(q 1) (q 2) (q 3)] (quad/read-sharded dir "google-patents"))))))

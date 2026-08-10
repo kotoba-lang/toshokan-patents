@@ -29,7 +29,8 @@ that also runs a daemon cannot be depended on without inheriting the daemon.
 | `parse-html`, `->quads`, `page-url`, `country-code`, `cited-patent-ids`, `normalize-patent-id` | ✅ | ✅ | ✅ |
 | `fetch-page`, `lookup` | — | **sync**, returns the value | **async**, returns a Promise |
 | `quad/read-journal`, `append-journal!`, `write-journal!` | — | `clojure.java.io` | `node:fs` |
-| `quad/next-tx`, `record->quads`, `merge-quads`, `entities` | ✅ | ✅ | ✅ |
+| `quad/read-sharded`, `append-sharded!`, `shard-paths` | — | ✅ | ✅ |
+| `quad/next-tx`, `record->quads`, `merge-quads`, `entities`, `render-journal` | ✅ | ✅ | ✅ |
 
 The network leg is deliberately **not** uniform across platforms. A JVM caller
 gets a value; a ClojureScript caller gets a Promise. Wrapping the JVM leg in a
@@ -47,6 +48,31 @@ blocking happens.
 ;; JVM: one polite request (nil if the id does not exist)
 (gp/lookup "US8697359B1")
 ```
+
+## The journal is sharded and line-oriented
+
+A journal a resident loop appends to forever cannot be one file, and cannot be
+one line.
+
+The original writer emitted `(pr-str (vec quads))` — at 618 patents that was a
+single **691 KB line**. Git stores a fresh blob per commit either way, but a
+one-line file also defeats delta compression and makes `git diff` and
+`git blame` useless on the exact artifact that is supposed to be the
+authoritative record (ADR-2607072300).
+
+So: `render-journal` writes one quad per line inside a single top-level EDN
+vector — still one `edn/read-string`-able form, so **every existing reader keeps
+working unchanged** — and `append-sharded!` seals a shard at 1 MiB and rolls
+over. A sealed shard is byte-identical forever, so git stores it once and
+DataLad/annex can take it later; only the bounded active shard is rewritten.
+
+Shards are named `<source>.NNNN.journal.edn` **in the same directory**, not a
+subdirectory, so consumers that glob `*.journal.edn` (the query plane, the
+corpus fold, the verifier) need no change either.
+
+`read-sharded` also picks up a legacy single `<source>.journal.edn` if present,
+and puts it FIRST — that file holds the oldest facts, and dropping it silently
+would look exactly like a corpus that had always been smaller.
 
 ## What it extracts, and what it does not
 
@@ -70,8 +96,8 @@ namespace runs on both platforms, because "pure" is a claim about platform
 agreement:
 
 ```bash
-clojure -M:test                              # JVM      → 4 tests, 33 assertions
-nbb --classpath src:test run-tests.cljs      # nbb/cljs → 4 tests, 33 assertions
+clojure -M:test                              # JVM      → 7 tests, 42 assertions
+nbb --classpath src:test run-tests.cljs      # nbb/cljs → 7 tests, 42 assertions
 ```
 
 ## Rate discipline is the caller's
