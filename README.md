@@ -28,9 +28,15 @@ that also runs a daemon cannot be depended on without inheriting the daemon.
 |---|---|---|---|
 | `parse-html`, `->quads`, `page-url`, `country-code`, `cited-patent-ids`, `normalize-patent-id` | ✅ | ✅ | ✅ |
 | `fetch-page`, `lookup` | — | **sync**, returns the value | **async**, returns a Promise |
-| `quad/read-journal`, `append-journal!`, `write-journal!` | — | `clojure.java.io` | `node:fs` |
-| `quad/read-sharded`, `append-sharded!`, `shard-paths` | — | ✅ | ✅ |
-| `quad/next-tx`, `record->quads`, `merge-quads`, `entities`, `render-journal` | ✅ | ✅ | ✅ |
+| `quad/next-tx`, `record->quads`, `merge-quads`, `entities`, `render-journal`, `shard-name` | ✅ | ✅ | ✅ |
+| `quad.fs/read-journal`, `write-journal!`, `append-journal!` | — | `clojure.java.io` | `node:fs` |
+| `quad.fs/read-sharded`, `append-sharded!`, `shard-paths` | — | ✅ | ✅ |
+
+**`quad` is pure; `quad.fs` is where the filesystem lives.** Split 2026-08-10:
+`quad` had claimed purity in its docstring while requiring `node:fs` at the top
+of the namespace, so a Cloudflare Worker trying to use the codec — the whole
+reason this is a library — failed to build on a dependency it does not have. A
+comment cannot enforce that boundary; a namespace can.
 
 The network leg is deliberately **not** uniform across platforms. A JVM caller
 gets a value; a ClojureScript caller gets a Promise. Wrapping the JVM leg in a

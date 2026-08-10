@@ -16,6 +16,7 @@
             [clojure.string :as str]
             [toshokan-patents.sources.google-patents :as gp]
             [toshokan-patents.quad :as quad]
+            [toshokan-patents.quad.fs :as qfs]
             #?(:clj [clojure.java.io :as io])
             #?(:cljs ["node:fs" :as fs])))
 
@@ -82,7 +83,7 @@
 
 (deftest quad-log-conventions
   (testing "an absent journal and an empty journal are the same thing"
-    (is (= [] (quad/read-journal "test/toshokan_patents/fixtures/does-not-exist.edn"))))
+    (is (= [] (qfs/read-journal "test/toshokan_patents/fixtures/does-not-exist.edn"))))
   (testing "next-tx starts at 1 and then advances past the highest"
     (is (= 1 (quad/next-tx [])))
     (is (= 4 (quad/next-tx [["a" :x 1 3 :add] ["b" :y 2 1 :add]]))))
@@ -116,17 +117,17 @@
         opts {:shard-max-bytes 200}]
     (testing "appends roll into new shards once the active one is full"
       (doseq [i (range 1 21)]
-        (quad/append-sharded! dir "google-patents" [(q i)] opts))
-      (is (> (count (quad/shard-paths dir "google-patents")) 1)
+        (qfs/append-sharded! dir "google-patents" [(q i)] opts))
+      (is (> (count (qfs/shard-paths dir "google-patents")) 1)
           "budget must actually force a roll, or this proves nothing"))
     (testing "every quad survives, in order"
-      (is (= (mapv q (range 1 21)) (quad/read-sharded dir "google-patents"))))
+      (is (= (mapv q (range 1 21)) (qfs/read-sharded dir "google-patents"))))
     (testing "sealed shards stop changing — that is the whole point"
-      (let [paths (quad/shard-paths dir "google-patents")
+      (let [paths (qfs/shard-paths dir "google-patents")
             first-shard (first paths)
-            before (quad/read-journal first-shard)]
-        (quad/append-sharded! dir "google-patents" [(q 99)] opts)
-        (is (= before (quad/read-journal first-shard))
+            before (qfs/read-journal first-shard)]
+        (qfs/append-sharded! dir "google-patents" [(q 99)] opts)
+        (is (= before (qfs/read-journal first-shard))
             "an append must not rewrite an older shard")))
     (testing "shard names sort in index order past 9 and 99"
       (is (= ["s.0000.journal.edn" "s.0009.journal.edn" "s.0010.journal.edn" "s.0100.journal.edn"]
@@ -135,8 +136,8 @@
 (deftest legacy-single-journal-is-not-dropped
   (let [dir (tmp-dir)
         legacy (str dir "/google-patents.journal.edn")]
-    (quad/write-journal! legacy [(q 1) (q 2)])
-    (quad/append-sharded! dir "google-patents" [(q 3)] {})
+    (qfs/write-journal! legacy [(q 1) (q 2)])
+    (qfs/append-sharded! dir "google-patents" [(q 3)] {})
     (testing "the pre-shard file holds the OLDEST facts; losing it would look
               exactly like a corpus that had always been smaller"
-      (is (= [(q 1) (q 2) (q 3)] (quad/read-sharded dir "google-patents"))))))
+      (is (= [(q 1) (q 2) (q 3)] (qfs/read-sharded dir "google-patents"))))))

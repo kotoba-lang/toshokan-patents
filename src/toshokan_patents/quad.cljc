@@ -6,24 +6,25 @@
   `[entity attr value tx op]` tuples (op is `:add` or `:retract`).
   Cardinality-many attrs fan out to one tuple per element.
 
-  ## This is a library, not a runner
+  ## This namespace is PURE — that is now enforced by the file, not by a comment
 
-  Everything above the `read-journal` line is PURE and portable — it never
-  touches a clock, a socket, or a filesystem. The file legs at the bottom are
-  reader-conditional (`clojure.java.io` on the JVM, `node:fs` on nbb/cljs) and
-  exist so a consumer does not have to re-derive the on-disk convention.
+  It used to say the top half was pure and portable and then `:require`
+  `node:fs` for the file legs at the bottom. Which meant that the moment a
+  Cloudflare Worker tried to use the pure half — the parser and the codec, the
+  whole reason this is a library — the build failed on a filesystem dependency
+  a Worker does not have and does not want.
+
+  The file legs now live in `toshokan-patents.quad.fs`. Consumers with a
+  filesystem require that; consumers without one (Workers, browsers) require
+  this and are unaffected.
+
+  ## This is a library, not a runner
 
   **Who owns the loop is not this repo's business** (2026-08-10 owner decision:
   kotoba-lang holds libraries only). The residency, the seed policy, the cursor,
   and the git commits live in the actor that consumes this —
   `cloud-itonami/hirameki`."
-  (:refer-clojure :exclude [read-string])
-  (:require #?(:clj  [clojure.edn :as edn]
-               :cljs [cljs.reader :as edn])
-            #?(:clj [clojure.java.io :as io])
-            #?(:cljs ["node:fs" :as fs])))
-
-;; ── pure ─────────────────────────────────────────────────────────────────────
+  (:refer-clojure :exclude []))
 
 (defn next-tx
   "The tx number a fresh append should carry: one past the highest already in
@@ -61,28 +62,6 @@
   [existing new-quads]
   (into (vec existing) new-quads))
 
-;; ── file legs (reader-conditional) ───────────────────────────────────────────
-
-(defn- slurp* [path]
-  #?(:clj  (slurp (io/file path))
-     :cljs (fs/readFileSync path "utf8")))
-
-(defn- spit* [path s]
-  #?(:clj  (spit (io/file path) s)
-     :cljs (fs/writeFileSync path s)))
-
-(defn- exists?* [path]
-  #?(:clj  (.exists (io/file path))
-     :cljs (fs/existsSync path)))
-
-(defn read-journal
-  "Read a journal file into a quad vector. A missing file reads as `[]` — an
-  absent journal and an empty journal are the same thing to a harvester."
-  [path]
-  (if (exists?* path)
-    (edn/read-string (slurp* path))
-    []))
-
 (defn render-journal
   "Quads → the on-disk text: ONE top-level EDN vector, one quad per line.
 
@@ -92,24 +71,15 @@
   journal on ONE line; at 618 patents that was a single 691 KB line. Git stores
   a fresh blob per commit either way, but a one-line file also defeats delta
   compression and makes `git diff` and `git blame` useless on the exact artifact
-  that is supposed to be the authoritative record (ADR-2607072300)."
+  that is supposed to be the authoritative record (ADR-2607072300).
+
+  PURE, and it has to be: the Cloudflare Worker writes journal shards through
+  the GitHub API with no filesystem in sight."
   [quads]
   (str "[" (reduce str (map #(str "\n" (pr-str %)) quads)) "\n]\n"))
 
-(defn write-journal! [path quads]
-  (spit* path (render-journal quads)))
 
-(defn append-journal!
-  "Read `path`, append `new-quads`, write back. Returns the full merged vector.
-
-  O(n) per append over the whole journal. Fine for a bounded corpus; use the
-  sharded API below for one that grows without end."
-  [path new-quads]
-  (let [merged (merge-quads (read-journal path) new-quads)]
-    (write-journal! path merged)
-    merged))
-
-;; ── sharded journal ──────────────────────────────────────────────────────────
+;; ── sharded journal: the pure half ───────────────────────────────────────────
 ;;
 ;; A journal that a resident loop appends to forever cannot be one file. Not
 ;; because of disk — because every commit stores a new copy of the WHOLE file,
@@ -134,60 +104,9 @@
 (defn shard-name [source n]
   (str source "." (subs (str "0000" n) (- (count (str "0000" n)) 4)) ".journal.edn"))
 
-(defn- shard-index [source filename]
+(defn shard-index
+  "The index in a shard filename, or nil if the name is not one of `source`'s."
+  [source filename]
   (when-let [m (re-matches (re-pattern (str "^" source "\\.(\\d{4})\\.journal\\.edn$")) filename)]
     #?(:clj (Long/parseLong (second m))
        :cljs (js/parseInt (second m) 10))))
-
-(defn- list-dir [dir]
-  #?(:clj  (let [f (io/file dir)] (if (.isDirectory f) (mapv #(.getName %) (.listFiles f)) []))
-     :cljs (if (and (exists?* dir) (.isDirectory (fs/statSync dir)))
-             (vec (fs/readdirSync dir))
-             [])))
-
-(defn- join* [dir name]
-  #?(:clj  (str (io/file dir name))
-     :cljs (str dir "/" name)))
-
-(defn shard-paths
-  "Every shard of `source` under `dir`, in index order."
-  [dir source]
-  (->> (list-dir dir)
-       (keep (fn [f] (when-let [i (shard-index source f)] [i (join* dir f)])))
-       (sort-by first)
-       (mapv second)))
-
-(defn read-sharded
-  "All quads of `source`, shards concatenated in index order.
-
-  Also picks up a legacy single `<source>.journal.edn` if one is still present,
-  BEFORE the shards — that file holds the oldest facts, and dropping it silently
-  would look exactly like a corpus that had always been smaller."
-  [dir source]
-  (let [legacy (join* dir (str source ".journal.edn"))
-        parts (cond-> (shard-paths dir source)
-                (exists?* legacy) (->> (into [legacy])))]
-    (into [] (mapcat read-journal) parts)))
-
-(defn append-sharded!
-  "Append `new-quads` to the active shard of `source`, sealing and rolling over
-  past `:shard-max-bytes`.
-
-  Only the active shard is read and rewritten, so the cost of an append is
-  bounded by the shard size rather than by the size of the corpus. Returns
-  `{:shard <path> :sealed <bool> :quads <n-in-shard>}`."
-  ([dir source new-quads] (append-sharded! dir source new-quads {}))
-  ([dir source new-quads {:keys [shard-max-bytes] :or {shard-max-bytes default-shard-max-bytes}}]
-   (let [paths (shard-paths dir source)
-         active (last paths)
-         active-size (if (and active (exists?* active))
-                       #?(:clj  (.length (io/file active))
-                          :cljs (.-size (fs/statSync active)))
-                       0)
-         roll? (or (nil? active) (>= active-size shard-max-bytes))
-         idx (if roll? (count paths) (dec (count paths)))
-         path (join* dir (shard-name source idx))
-         existing (if roll? [] (read-journal path))
-         merged (merge-quads existing new-quads)]
-     (write-journal! path merged)
-     {:shard path :sealed roll? :quads (count merged)})))
