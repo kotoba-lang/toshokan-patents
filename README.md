@@ -1,89 +1,85 @@
 # toshokan-patents
 
-Self-growing **worldwide patent bibliographic** harvest — a sibling of
-`kotoba-lang/toshokan` that applies the same self-growing resident-loop pattern
-([ADR-2607255100](https://github.com/com-junkawasaki/root/blob/main/90-docs/adr/2607255100-toshokan-self-growing-resident-ingest.edn))
-to patent data instead of national-library catalogs. Design:
+**Library.** Worldwide patent bibliographic metadata: a Google Patents page →
+a field-map → git-authoritative EDN quads `[entity attr value tx op]`.
+
+Sibling of [`kotoba-lang/toshokan`](https://github.com/kotoba-lang/toshokan)
+(national-library catalogs); same journal convention
+([ADR-2607072300](https://github.com/com-junkawasaki/root/blob/main/90-docs/adr/2607072300-actor-public-data-git-journal-kotobase-index.edn)),
+different subject. Source design:
 [ADR-2607251552](https://github.com/com-junkawasaki/root/blob/main/90-docs/adr/2607251552-toshokan-patents-worldwide-patent-resident-harvest.edn).
 
-This repo's own git history is the source of truth (ADR-2607072300); the
-kotobase.net graph is a derived, rebuildable index over it.
+## This repo holds no loop and no data
 
-## What it does
+It used to. Until 2026-08-10 this repo also carried the resident daemon, the
+seed list, the harvest cursor, and 618 harvested patents. **They now live in
+[`cloud-itonami/hirameki`](https://github.com/cloud-itonami/hirameki)** (the
+governed observatory actor that runs the loop) and
+[`cloud-itonami/hirameki-patents`](https://github.com/cloud-itonami/hirameki-patents)
+(the corpus dataset) — kotoba-lang holds libraries only.
 
-Fetches patent bibliographic metadata — title, applicant, inventor, number,
-country, filing/grant dates, cited patents — from public sources and stores it
-as git-authoritative EDN quads `[entity attr value tx op]` for DataScript /
-Datomic query. **The repo grows itself by walking the citation graph**: each
-harvested patent's cited patents (`DC.relation scheme=references`) become new
-seeds for the next tick.
+Nothing was lost: the journal moved to the corpus repo, and this repo's git
+history still has every tick. What changed is *who owns residency*. A library
+that also runs a daemon cannot be depended on without inheriting the daemon.
 
-**Metadata-only.** No claims / specification full text. No bot-detection
-bypass. Identifying User-Agent, sequential requests, polite rate.
+## API
 
-## Self-growing resident loop
+| | pure | JVM | cljs / nbb |
+|---|---|---|---|
+| `parse-html`, `->quads`, `page-url`, `country-code`, `cited-patent-ids`, `normalize-patent-id` | ✅ | ✅ | ✅ |
+| `fetch-page`, `lookup` | — | **sync**, returns the value | **async**, returns a Promise |
+| `quad/read-journal`, `append-journal!`, `write-journal!` | — | `clojure.java.io` | `node:fs` |
+| `quad/next-tx`, `record->quads`, `merge-quads`, `entities` | ✅ | ✅ | ✅ |
 
-| file | role |
-|---|---|
-| `seeds.edn` | patent-id seed list (hand-editable; daemon also appends citation-grown seeds) |
-| `scripts/daemon.cljs` | one tick: lookup → dedupe → journal append → citation-graph seed grow → optional git push + kotobase ingest |
-| `state.edn` | cursor / exhausted seeds (daemon-managed) |
-| `scripts/harvest.cljs` | one-shot lookup by patent id |
-| `scripts/query.cljs` | local DataScript query over journals |
-| `deploy/com.kotoba-lang.toshokan-patents-tick.plist` | macOS LaunchAgent for residency (6h) |
+The network leg is deliberately **not** uniform across platforms. A JVM caller
+gets a value; a ClojureScript caller gets a Promise. Wrapping the JVM leg in a
+fake promise to make the signatures match would buy nothing and hide where the
+blocking happens.
 
-```bash
-# one tick (lookup only)
-nbb --classpath src scripts/daemon.cljs --once
+```clojure
+(require '[toshokan-patents.sources.google-patents :as gp]
+         '[toshokan-patents.quad :as quad])
 
-# one tick + git push + kotobase.net fold (what the LaunchAgent runs)
-nbb --classpath src scripts/daemon.cljs --once --push --ingest
+;; pure: HTML you already have → quads
+(->> (gp/parse-html html "US8697359B1")
+     (gp/->quads (quad/next-tx existing) "2026-08-10T00:00:00Z"))
 
-# one-shot lookup by patent id
-npx nbb --classpath "src" scripts/harvest.cljs US8697359B1
-
-# local query surface
-nbb --classpath src scripts/query.cljs stats
-nbb --classpath src scripts/query.cljs sample 10
-nbb --classpath src scripts/query.cljs q \
-  '[:find ?n ?a :where [?e "patent/number" ?n] [?e "patent/applicant" ?a]]'
+;; JVM: one polite request (nil if the id does not exist)
+(gp/lookup "US8697359B1")
 ```
 
-Residency on the murakumo fleet host is a **LaunchAgent**
-(`com.kotoba-lang.toshokan-patents-tick`, 6h, same class as `toshokan-tick` /
-`fleet-ci-murakumo-tick` / `itonami-qwen36-tick`), not a WASM `on-tick` guest
-yet — that waits on ADR-2607252400 CID capabilities (non-exclusive).
+## What it extracts, and what it does not
 
-## Source: Google Patents (v1; USPTO ODP / EPO OPS later)
+Bibliographic fields from the page's **own** structured metadata: title,
+patent/application number, jurisdiction, filing date, grant date, inventors,
+assignees, and the cited-patent list. Never claims, never specification text,
+never a paywall or bot-detection bypass.
 
-`patents.google.com/patent/<id>/en` — public, server-rendered HTML with rich
-Dublin Core (`DC.date`, `DC.contributor`), `citation_patent_number`, and
-`DC.relation scheme=references` (cited patents) metadata. It covers the
-WORLDWIDE bibliographic space (US / EP / JP / WO / CN / KR / …) in one source —
-effectively a free, no-auth mirror of the EPO DOCDB bibliographic set — and the
-citation edges let the daemon self-grow by walking the citation graph.
+`DC.relation scheme=references` is the field worth having: it names the patents
+this one cites, in compact form (`JP2004224907A`), which is what lets a consumer
+walk the citation graph and grow its own seeds. Filing date vs. grant date and
+inventor vs. assignee are told apart by the `scheme` attribute — both pairs
+share a `name` (`DC.date`, `DC.contributor`), so reading `name` alone silently
+conflates them. The tests assert exactly that.
 
-USPTO Open Data Portal API is mid-migration (`search.patentsview.org` sunset
-2026-03-20; `data.uspto.gov` API path still fluid). EPO OPS needs OAuth
-registration. Both are non-exclusive future sources — the journal schema and
-daemon are source-agnostic.
+## Tests
 
-## Schema
+The fixture is a **real** page (US8697359B1 — Broad Institute CRISPR-Cas9),
+reduced to its `<title>` and all 2,329 `<meta>` tags. The same `.cljc` test
+namespace runs on both platforms, because "pure" is a claim about platform
+agreement:
 
-Quads use the `[entity attr value tx op]` shape (ADR-2607072300). Entities are
-namespaced by source: `gp:<PATENT-ID>` (e.g. `gp:US8697359B1`). Attributes:
+```bash
+clojure -M:test                              # JVM      → 4 tests, 33 assertions
+nbb --classpath src:test run-tests.cljs      # nbb/cljs → 4 tests, 33 assertions
+```
 
-`:patent/source`, `:patent/source-url`, `:patent/title`, `:patent/number`,
-`:patent/patent-id`, `:patent/country`, `:patent/application-number`,
-`:patent/filed-at`, `:patent/granted-at`, `:patent/inventor` (many),
-`:patent/applicant` (many), `:patent/cites` (many — citation-graph edges),
-`:patent/retrieved-at`.
+## Rate discipline is the caller's
 
-## Worldwide coverage
+This library performs one request when asked and has no timer, no retry, and no
+concurrency of its own. Identifying User-Agent, sequential, polite rate — the
+*rate* is set by whoever runs the loop.
 
-Asymptotic and honest (the workspace's system-dynamics rule): the seeds plus
-the citation graph grow coverage over time, not a claim of complete global
-inventory on day one. v1 proves the loop with US/EP roots and their citation
-graphs; JPO standardized-data TSV and EPO DOCDB bulk ingestion (the eventual
-~150M-record worldwide master) are follow-ons — heavy backfills can fan out via
-`murakumo task run` (ADR-2607256000, the fleet task plane). See ADR-2607251552.
+## License
+
+Apache-2.0.

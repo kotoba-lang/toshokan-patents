@@ -1,3 +1,4 @@
-node_modules/
-scripts/.kotobase-ingest-toshokan-patents-identity.hex
+.cpcache/
+.clj-kondo/
+.lsp/
 *.log
