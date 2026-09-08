@@ -31,7 +31,7 @@
   and they are reader-conditional: **the JVM leg is synchronous and returns the
   value, the ClojureScript leg returns a Promise.** That asymmetry is deliberate
   and not hidden behind a fake uniform API."
-  (:require [clojure.string :as str]
+  (:require [kotoba.lang.text :as str]
             [toshokan-patents.quad :as quad])
   #?(:clj (:import (java.net URI)
                    (java.net.http HttpClient HttpClient$Redirect HttpRequest
@@ -89,7 +89,7 @@
 ;; ── patent-id helpers ────────────────────────────────────────────────────────
 
 (defn normalize-patent-id [id]
-  (-> id str/trim str/upper-case (str/replace #"\s+" "")))
+  (-> id str/trim str/upper (str/replace #"\s+" "")))
 
 (defn page-url [id]
   (str page-endpoint (normalize-patent-id id) "/en"))
