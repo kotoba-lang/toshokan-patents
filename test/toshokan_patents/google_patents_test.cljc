@@ -13,7 +13,7 @@
   the pure half of the library, and 'pure' is a claim about platform agreement,
   not a comment."
   (:require [clojure.test :refer [deftest is testing]]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [toshokan-patents.sources.google-patents :as gp]
             [toshokan-patents.quad :as quad]
             [toshokan-patents.quad.fs :as qfs]
