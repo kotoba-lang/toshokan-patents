@@ -103,7 +103,7 @@ agreement:
 
 ```bash
 clojure -M:test                              # JVM      → 7 tests, 42 assertions
-nbb --classpath src:test run-tests.cljs      # nbb/cljs → 7 tests, 42 assertions
+nbb --classpath src:test run-tests.cljk      # nbb/cljs → 7 tests, 42 assertions
 ```
 
 ## Rate discipline is the caller's
