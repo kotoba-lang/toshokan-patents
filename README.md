@@ -102,8 +102,8 @@ namespace runs on both platforms, because "pure" is a claim about platform
 agreement:
 
 ```bash
-clojure -M:test                              # JVM      → 7 tests, 42 assertions
-nbb --classpath src:test run-tests.cljk      # nbb/cljs → 7 tests, 42 assertions
+kbb -M:test                              # JVM      → 7 tests, 42 assertions
+kbb --backend sci --classpath src:test run-tests.cljk      # nbb/cljs → 7 tests, 42 assertions
 ```
 
 ## Rate discipline is the caller's
