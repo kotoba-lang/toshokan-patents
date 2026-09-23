@@ -12,7 +12,7 @@
   Consumers without one (Workers, browsers) require only `quad` and are
   unaffected by anything in here."
   (:require [toshokan-patents.quad :as quad]
-            #?(:clj  [clojure.edn :as edn]
+            #?(:clj  [kotoba.lang.edn :as edn]
                :cljs [cljs.reader :as edn])
             #?(:clj [clojure.java.io :as io])
             #?(:cljs ["node:fs" :as fs])))
