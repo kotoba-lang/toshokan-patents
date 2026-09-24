@@ -17,7 +17,7 @@
             [toshokan-patents.sources.google-patents :as gp]
             [toshokan-patents.quad :as quad]
             [toshokan-patents.quad.fs :as qfs]
-            #?(:clj [clojure.java.io :as io])
+            #?(:clj [kotoba.io :as io])
             #?(:cljs ["node:fs" :as fs])))
 
 (def fixture-path "test/toshokan_patents/fixtures/US8697359B1.html")
